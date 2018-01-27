@@ -27,7 +27,6 @@ typedef struct {
     struct _list_node *first_item;
 } list;
 
-
 list *create_list() {
     list *_list = malloc(sizeof(list));
     _list->first_item = NULL;
@@ -80,6 +79,11 @@ void list_add(list *_list, void *value) {
 
 
 mpc_ast_t *text_to_tree(char *code) {
+    mpc_parser_t *UnaryOperatorPostfix = mpc_new("postunop");
+    mpc_parser_t *UnaryOperatorPrefix = mpc_new("preunop");
+    mpc_parser_t *BinaryOperator = mpc_new("binop");
+    mpc_parser_t *BinaryOperation = mpc_new("binoperation");
+    mpc_parser_t *Operation = mpc_new("operation");
     mpc_parser_t *Name = mpc_new("name");
     mpc_parser_t *Section = mpc_new("section");
     mpc_parser_t *Import = mpc_new("import");
@@ -103,13 +107,17 @@ mpc_ast_t *text_to_tree(char *code) {
     mpc_parser_t *Programme = mpc_new("programme");
 
 
-    mpc_err_t *error = mpca_lang(MPCA_LANG_DEFAULT,
+    mpc_err_t *error = mpca_lang(MPCA_LANG_DEFAULT, // TODO: move?
                                  "name: /[A-z._0-9]+/;"
-                                         "section: (\"section\" | \"sec\" | \"segment\" | \"seg\") /[A-z]+/;"
+                                         "import: \"import\" /[A-z.]*/" // TODO: change?
+                                         "binop: ('+' | '-' | '/' | '*' | \"&&\" | '||');"
+                                         "binaryoperation: <expr> <binop> <expr>;"
+                                         "operation: (<binaryoperation>)" // TODO: add more operations
+                                         "section: (\"section\" | \"sec\" | \"segment\" | \"seg\") /[A-z]+/;" // TODO: remove?
                                          "keywordtype: ( \"int\" );"
                                          "builtin: \"Type\";"
                                          "customtype: \"Struct\";"
-                                         "block: '{' (<assignment>|<function>)* '}';"
+                                         "block: '{' (<assignment>|<function>)* '}';" // TODO: remove?
                                          "typed: ':' ( ( (<type>|<builtin>) \"<\" <name> \">\") | <keywordtype>);"
                                          "var: <name><typed>?;"
                                          "assignment: <var> '=' <expr>;"
@@ -124,7 +132,8 @@ mpc_ast_t *text_to_tree(char *code) {
                                          "terminator:  ( /$/ | /[\\n;]+/ );"
                                          "statement: <expr> <terminator>;"
                                          "programme: /^/ ((<section> | <function> | <assignment>) <terminator>)* /$/;",
-                                 Section, KeyWordType, Name, Builtin, CustomType, Block, Typed, Variable, Assignment,
+                                 Name, BinaryOperator, BinaryOperation, Operation, Section, KeyWordType, Builtin,
+                                 CustomType, Block, Typed, Variable, Assignment,
                                  String, BinaryNumber, DecimalNumber, HexNumber, Number, Expression,
                                  Function, Call, Terminator, Statement, Programme, NULL);
     mpc_result_t r;
@@ -205,7 +214,7 @@ char *tree_to_file(mpc_ast_t *programme, FILE *file) {
     return module_to_file(module, file);
 }
 
-char *module_to_file(LLVMModuleRef module, FILE *file){
+char *module_to_file(LLVMModuleRef module, FILE *file) {
     char *ERROR = NULL;
     LLVMVerifyModule(module, LLVMPrintMessageAction, &ERROR);
     if (ERROR) {
@@ -253,7 +262,6 @@ LLVMValueRef visit_function_call(LLVMBuilderRef builder, LLVMModuleRef module, m
         list_add(arg_list, visit_expression(builder, module, tree->children[place]));
         place++;
     }
-    LLVMValueRef function = LLVMGetNamedFunction(module, function_name);
     return LLVMBuildCall(builder, LLVMGetNamedFunction(module, function_name),
                          (LLVMValueRef *) list_to_array(arg_list), list_len(arg_list), "return");
 }
@@ -267,11 +275,27 @@ LLVMValueRef visit_expression(LLVMBuilderRef builder, LLVMModuleRef module, mpc_
         return visit_function_declaration(builder, module, tree);
     if (strstr(tree->tag, "assignment"))
         return visit_assignment(builder, module, tree);
+    if (strstr(tree->tag, "operation"))
+        return visit_operation(builder, module, tree);
 
 
 }
 
-LLVMValueRef visit_assignment(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) {
+LLVMValueRef visit_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) {
+    if (strstr(tree->tag, "binaryoperation"))
+        return visit_binary_operation(builder, module, tree);
+}
+
+LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) {
+    mpc_ast_t *left = tree->children[0];
+    mpc_ast_t *right = tree->children[2];
+    char *operator = tree->children[1]->contents;
+    if (strcmp(operator, "+") == 0) {
+        // TODO
+    }
+}
+
+LLVMValueRef visit_assignment(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) { // TODO: typed variables
     LLVMValueRef value = visit_expression(builder, module, tree->children[2]);
     char *name = tree->children[0]->contents;
     LLVMSetValueName(value, name);
