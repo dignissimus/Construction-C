@@ -287,24 +287,25 @@ LLVMValueRef visit_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_a
         return visit_binary_operation(builder, module, tree);
 }
 
-LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) { // TODO: Improve
+LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module,
+                                    mpc_ast_t *tree) { // TODO: Improve - different types of data, integers smaller than 0
     LLVMValueRef left = visit_expression(builder, module, tree->children[0]);
     LLVMValueRef right = visit_expression(builder, module, tree->children[2]);
     char *operator = tree->children[1]->contents;
     if (LLVMTypeOf(left) == LLVMInt32Type() && LLVMTypeOf(right) == LLVMInt32Type()) {
-        long long left_val = LLVMConstIntGetSExtValue(left);
-        long long right_val = LLVMConstIntGetSExtValue(right);
-        long long total = NULL;
+        unsigned long long left_val = LLVMConstIntGetZExtValue(left);
+        unsigned long long right_val = LLVMConstIntGetZExtValue(right);
+        LLVMValueRef return_val = NULL;
         if (strcmp(operator, "+") == 0)
-            total = left_val + right_val;
+            return_val = LLVMConstInt(LLVMInt32Type(), left_val + right_val, 0);
         if (strcmp(operator, "-") == 0)
-            total = left_val - right_val;
+            return_val = LLVMConstInt(LLVMInt32Type(), left_val - right_val, 0);
         if (strcmp(operator, "*") == 0)
-            total = left_val * right_val;
+            return_val = LLVMConstInt(LLVMInt32Type(), left_val * right_val, 0);
         if (strcmp(operator, "/") == 0)
-            total = left_val / right_val;
-        if (total)
-            return LLVMConstInt(LLVMInt32Type(), total, 0);
+            return_val = LLVMConstInt(LLVMInt32Type(), left_val / right_val, 0);
+        if (return_val)
+            return return_val;
     }
 }
 
