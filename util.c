@@ -79,6 +79,7 @@ void list_add(list *_list, void *value) {
 
 
 mpc_ast_t *text_to_tree(char *code) {
+    mpc_parser_t *Comment = mpc_new("comment");
     mpc_parser_t *UnaryOperatorPostfix = mpc_new("postunop");
     mpc_parser_t *UnaryOperatorPrefix = mpc_new("preunop");
     mpc_parser_t *BinaryOperator = mpc_new("binop");
@@ -108,11 +109,12 @@ mpc_ast_t *text_to_tree(char *code) {
 
 
     mpc_err_t *error = mpca_lang(MPCA_LANG_DEFAULT, // TODO: move?
-                                 "name: /[A-z._0-9]+/;"
-                                         "import: \"import\" /[A-z.]*/" // TODO: change?
-                                         "binop: ('+' | '-' | '/' | '*' | \"&&\" | '||');"
-                                         "binaryoperation: <expr> <binop> <expr>;"
-                                         "operation: (<binaryoperation>)" // TODO: add more operations
+                                 "comment: \"//\" /[^\r\n]/ | \"/*\" /.*?/ \"*/\";"
+                                         "name: /[A-z._0-9]+/;"
+                                         "import: \"import\" /[A-z.]*/;" // TODO: change?
+                                         "binop: ('+' | '-' | '/' | '*' | \"&&\" | \"||\");"
+                                         // "binoperation: <expr> <binop> <expr>;" // TODO: fix - left recursion
+                                         // "operation: (<binoperation>);" // TODO: add more operations
                                          "section: (\"section\" | \"sec\" | \"segment\" | \"seg\") /[A-z]+/;" // TODO: remove?
                                          "keywordtype: ( \"int\" );"
                                          "builtin: \"Type\";"
@@ -125,17 +127,17 @@ mpc_ast_t *text_to_tree(char *code) {
                                          "binnum: \"0b\" /[01]+/;"
                                          "decnum: /[1-9][0-9]*/;"
                                          "hexnum: \"0x\" /[A-Fa-f0-9]+/;"
-                                         "number: <hexnum> | <decnum> | <binnum>;"
-                                         "expr: <string> | <function> | <call> | <number> | <assignment> | <var>;"
+                                         "number: <hexnum> | <decnum> | <binnum>;" // TODO: 'decimal' numbers
+                                         "expr: <string> | <function> | <call> | <number> | <assignment> | <var>;" // add <operation> here
                                          "function: <name>?<typed>?('(' (<var>(','<var>)*)? ')')? '{' <statement>* '}';"
                                          "call: <name> '('  (<expr> (','<expr>)*)? ')';"
-                                         "terminator:  ( /$/ | /[\\n;]+/ );"
-                                         "statement: <expr> <terminator>;"
-                                         "programme: /^/ ((<section> | <function> | <assignment>) <terminator>)* /$/;",
-                                 Name, BinaryOperator, BinaryOperation, Operation, Section, KeyWordType, Builtin,
-                                 CustomType, Block, Typed, Variable, Assignment,
-                                 String, BinaryNumber, DecimalNumber, HexNumber, Number, Expression,
-                                 Function, Call, Terminator, Statement, Programme, NULL);
+                                         "terminator:  ( /$/ | /[;]+/ );" // TODO: optional semicolon?
+                                         "statement: <expr> <terminator>;" // TODO: improve -
+                                         "programme: /^/ ((<section> | <function> | <assignment>) <terminator> | <comment>)* /$/;", // TODO: improve comments
+                                 Comment, Name, Import, BinaryOperator, /* BinaryOperation, Operation,*/ Section,
+                                 KeyWordType, Builtin, CustomType, Block, Typed, Variable, Assignment, String,
+                                 BinaryNumber, DecimalNumber, HexNumber, Number, Expression, Function, Call, Terminator,
+                                 Statement, Programme, NULL);
     mpc_result_t r;
     if (mpc_parse("code", code, Programme, &r)) {
         mpc_ast_t *tree = r.output;
@@ -144,7 +146,6 @@ mpc_ast_t *text_to_tree(char *code) {
     }
     else {
         fprintf(stderr, "Unable to parse the string\n");
-        /* Otherwise print and delete the Error */
         mpc_err_print(r.error);
         mpc_err_delete(r.error);
     }
@@ -153,7 +154,7 @@ mpc_ast_t *text_to_tree(char *code) {
 char *read_file(char *file_name) {
     FILE *file = fopen(file_name, "r");
     if (!file) {
-        fprintf(stderr, "Could not read file '%s'\n", file_name);
+        fprintf(stderr, "Could not read file '%s' for reading\n", file_name);
         exit(1);
     }
 
@@ -282,16 +283,28 @@ LLVMValueRef visit_expression(LLVMBuilderRef builder, LLVMModuleRef module, mpc_
 }
 
 LLVMValueRef visit_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) {
-    if (strstr(tree->tag, "binaryoperation"))
+    if (strstr(tree->tag, "binoperation"))
         return visit_binary_operation(builder, module, tree);
 }
 
-LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) {
-    mpc_ast_t *left = tree->children[0];
-    mpc_ast_t *right = tree->children[2];
+LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree) { // TODO: Improve
+    LLVMValueRef left = visit_expression(builder, module, tree->children[0]);
+    LLVMValueRef right = visit_expression(builder, module, tree->children[2]);
     char *operator = tree->children[1]->contents;
-    if (strcmp(operator, "+") == 0) {
-        // TODO
+    if (LLVMTypeOf(left) == LLVMInt32Type() && LLVMTypeOf(right) == LLVMInt32Type()) {
+        long long left_val = LLVMConstIntGetSExtValue(left);
+        long long right_val = LLVMConstIntGetSExtValue(right);
+        long long total = NULL;
+        if (strcmp(operator, "+") == 0)
+            total = left_val + right_val;
+        if (strcmp(operator, "-") == 0)
+            total = left_val - right_val;
+        if (strcmp(operator, "*") == 0)
+            total = left_val * right_val;
+        if (strcmp(operator, "/") == 0)
+            total = left_val / right_val;
+        if (total)
+            return LLVMConstInt(LLVMInt32Type(), total, 0);
     }
 }
 

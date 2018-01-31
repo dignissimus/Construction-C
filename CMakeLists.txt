@@ -12,7 +12,7 @@ find_package(LLVM REQUIRED)
 include_directories(${LLVM_INCLUDE_DIRS})
 set(LIBS ${LIBS} ${LLVM_LIBRARIES})
 
-set(SOURCE_FILES main.c main.h repl.c repl.h utilremake mpc.c mpc.h)
+set(SOURCE_FILES main util mpc)
 add_executable(Construction ${SOURCE_FILES})
 target_link_libraries(Construction ${LIBEDIT_LIBRARIES} ${LLVM_LIBRARIES} m)
 file(COPY lib-construction DESTINATION ${CMAKE_BINARY_DIR})

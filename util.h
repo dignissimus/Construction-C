@@ -10,7 +10,7 @@ char *eval(mpc_ast_t *programme, FILE *file);
 
 LLVMValueRef visit(LLVMModuleRef modulr, struct mpc_ast_t *tree);
 
-void visit_statement(LLVMBuilderRef builder,LLVMModuleRef module, mpc_ast_t *tree);
+void visit_statement(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree);
 
 LLVMValueRef visit_function_declaration(LLVMBuilderRef builder, LLVMModuleRef module, struct mpc_ast_t *tree);
 
@@ -32,8 +32,12 @@ mpc_ast_t *text_to_tree(char *code);
 
 char *read_file(char *file_name);
 
-LLVMModuleRef tree_to_module(mpc_ast_t *programme, char* name, int include_std_lib);
+LLVMModuleRef tree_to_module(mpc_ast_t *programme, char *name, int include_std_lib);
 
 char *tree_to_file(mpc_ast_t *programme, FILE *file);
 
-char *module_to_file(LLVMModuleRef module, FILE *file)
+char *module_to_file(LLVMModuleRef module, FILE *file);
+
+LLVMValueRef visit_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree);
+
+LLVMValueRef visit_binary_operation(LLVMBuilderRef builder, LLVMModuleRef module, mpc_ast_t *tree);
